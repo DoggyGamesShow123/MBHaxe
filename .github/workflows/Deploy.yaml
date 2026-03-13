@@ -122,3 +122,4 @@ jobs:
           publish_branch: main                           # change if your Pages repo uses "master"
           publish_dir: site
           destination_dir: MXHaxe/help
+          commit_message: "Deploy MBHaxe ${{ github.sha }} → /MXHaxe/help"
