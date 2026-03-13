@@ -2,7 +2,7 @@ name: Build & Deploy MBHaxe (JS → GitHub Pages subfolder)
 
 on:
   push:
-    branches: [ master, main ]   # add other branches if you want auto-deploy
+    branches: [ master, main ]
   workflow_dispatch:
 
 permissions:
@@ -20,24 +20,23 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # Java requested: ensure JDK is present (Temurin 21).
+      # Java requested: ensure JDK is present (Temurin 21)
       - name: Set up Java (Temurin 21)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
-      # Haxe 4.3.x per MBHaxe README (JS target requires ≥4.3.0).
+      # Haxe 4.3.x (MBHaxe requires ≥ 4.3.0)
       - name: Set up Haxe
         uses: krdlab/setup-haxe@v2
         with:
           haxe-version: '4.3.7'
 
-      # ---- FIXED PART: Correct haxelib repo initialization ----
+      # Correct haxelib repo initialization (do NOT use ~/.haxelib as a directory)
       - name: Initialize haxelib repo (idempotent fix)
         shell: bash
         run: |
-          # ~/.haxelib is the CONFIG FILE; do not use it as the repo directory.
           if [ ! -f "$HOME/.haxelib" ]; then
             mkdir -p "$HOME/haxelib"
             haxelib setup "$HOME/haxelib"
@@ -45,18 +44,17 @@ jobs:
             echo "haxelib already configured at: $(cat "$HOME/.haxelib" || true)"
           fi
 
-      - name: Install browser deps (heaps, stb_ogg_sound, zip 1.1.0, colyseus-websocket)
+      - name: Install browser deps (heaps, stb_ogg_sound, zip 1.1.0, colyseus-websocket, datachannel)
         run: |
-          # Game engine
+          # Engine + JS dependencies required by MBHaxe
           haxelib install heaps --always
-          # Ogg/Vorbis decoder used by MBHaxe in browser
           haxelib install stb_ogg_sound --always
-          # MBHaxe wants zip 1.1.0 for JS builds
           haxelib install zip 1.1.0 --always || haxelib set zip 1.1.0
-          # NEW: WebSocket client needed by your hxml (fixes the current error)
+          # If your .hxml references these, install them too:
           haxelib install colyseus-websocket --always
-          # Optional (usually not required unless your hxml also uses it):
-          # haxelib install colyseus --always || true
+          haxelib install datachannel --always
+          # Optional (uncomment if your .hxml also uses it):
+          # haxelib install colyseus --always
 
       - name: Build (JS release if available, else JS debug)
         run: |
@@ -66,7 +64,6 @@ jobs:
             haxe compile-js.hxml
           fi
 
-      # Stage what the web runtime needs.
       - name: Stage site
         shell: bash
         run: |
@@ -86,17 +83,12 @@ jobs:
             --exclude 'LICENSE' \
             --exclude 'CHANGELOG.md'
 
-      # Deploy into your user Pages repo under subfolder MXHaxe/help
       - name: Deploy → doggygamesshow123.github.io/MXHaxe/help
         uses: peaceiris/actions-gh-pages@v4
         with:
-          # A classic PAT with `repo` scope saved in this repo's secrets:
-          personal_token: ${{ secrets.GH_PAGES_TOKEN }}
-          # Your user/organization Pages repository:
+          personal_token: ${{ secrets.GH_PAGES_TOKEN }}   # classic PAT with repo scope
           external_repository: DoggyGamesShow123/DoggyGamesShow123.github.io
-          # Change this if your Pages repo's default branch is "master"
-          publish_branch: main
+          publish_branch: main                           # change if your Pages repo uses "master"
           publish_dir: site
-          # This is the subfolder you asked for
           destination_dir: MXHaxe/help
           commit_message: "Deploy MBHaxe ${{ github.sha }} → /MXHaxe/help"
