@@ -23,6 +23,7 @@ jobs:
       # Install Haxe 4.3.x (MBHaxe requires 4.3.0+)
       # https://github.com/marketplace/actions/setup-haxe-environment
       - name: Setup Haxe
+      
         uses: krdlab/setup-haxe@v2
         with:
           haxe-version: 4.3.7
@@ -42,6 +43,34 @@ jobs:
             haxelib install compile-js-rel.hxml --always
           else
             haxelib install compile-js.hxml --always
+          fi
+
+jobs:
+  build-js:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Haxe 4.3.x
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: 4.3.7  # any 4.3+ is fine
+
+      - name: Pin Heaps to 1.10.0 (pre-2.0 API)
+        run: |
+          mkdir -p "$HOME/haxelib"
+          haxelib setup "$HOME/haxelib"
+          haxelib install heaps 1.10.0
+          haxelib set heaps 1.10.0
+          haxelib list
+
+      - name: Build (JavaScript)
+        run: |
+          if [ -f compile-js-rel.hxml ]; then
+            haxe compile-js-rel.hxml
+          else
+            haxe compile-js.hxml
           fi
 
       # Build the JS target (release if available)
