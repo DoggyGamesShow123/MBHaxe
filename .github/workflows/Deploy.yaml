@@ -20,18 +20,31 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # Java requested: ensure JDK is present (Temurin 21)
+      # Java requested: ensure JDK is present (Temurin 21).
       - name: Set up Java (Temurin 21)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
-      # Haxe 4.3.x (MBHaxe requires ≥ 4.3.0)
+      # Haxe 4.3.x per MBHaxe README (JS target requires ≥4.3.0).
       - name: Set up Haxe
         uses: krdlab/setup-haxe@v2
         with:
           haxe-version: '4.3.7'
+
+      # Node is needed because the Haxe 'uglifyjs' lib shells out to the 'uglify-js' Node binary.
+      - name: Set up Node (for uglifyjs minification)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install uglify-js npm package (local)
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm install uglify-js --save-dev --no-audit --no-fund
+          # Put node_modules/.bin on PATH so 'uglifyjs' is discoverable
+          echo "$(npm bin)" >> "$GITHUB_PATH"
 
       # Correct haxelib repo initialization (do NOT use ~/.haxelib as a directory)
       - name: Initialize haxelib repo (idempotent fix)
@@ -44,17 +57,17 @@ jobs:
             echo "haxelib already configured at: $(cat "$HOME/.haxelib" || true)"
           fi
 
-      - name: Install browser deps (heaps, stb_ogg_sound, zip 1.1.0, colyseus-websocket, datachannel)
+      - name: Install browser deps (heaps, stb_ogg_sound, zip 1.1.0, colyseus-websocket, datachannel, uglifyjs)
         run: |
           # Engine + JS dependencies required by MBHaxe
           haxelib install heaps --always
           haxelib install stb_ogg_sound --always
           haxelib install zip 1.1.0 --always || haxelib set zip 1.1.0
-          # If your .hxml references these, install them too:
+          # Multiplayer/WebSocket bits (as referenced by your .hxml)
           haxelib install colyseus-websocket --always
           haxelib install datachannel --always
-          # Optional (uncomment if your .hxml also uses it):
-          # haxelib install colyseus --always
+          # NEW: Haxe uglifyjs wrapper (will call the npm 'uglify-js' binary)
+          haxelib install uglifyjs --always
 
       - name: Build (JS release if available, else JS debug)
         run: |
