@@ -1,0 +1,76 @@
+name: Build & Deploy MBHaxe to user site subfolder
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-mxhaxe
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # Install Haxe 4.3.x (MBHaxe requires 4.3.0+)
+      # https://github.com/marketplace/actions/setup-haxe-environment
+      - name: Setup Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: 4.3.7
+
+      # Initialize haxelib repo (typical on CI)
+      # See installation notes: mkdir ~/haxelib && haxelib setup ~/haxelib
+      - name: Init haxelib
+        run: |
+          mkdir -p "$HOME/haxelib"
+          haxelib setup "$HOME/haxelib"
+
+      # Install libs declared in the hxml (preferred – future-proof).
+      # Falls back to the non-release hxml if needed.
+      - name: Install Haxe libraries
+        run: |
+          if [ -f compile-js-rel.hxml ]; then
+            haxelib install compile-js-rel.hxml --always
+          else
+            haxelib install compile-js.hxml --always
+          fi
+
+      # Build the JS target (release if available)
+      - name: Build (JavaScript)
+        run: |
+          if [ -f compile-js-rel.hxml ]; then
+            haxe compile-js-rel.hxml
+          else
+            haxe compile-js.hxml
+          fi
+
+      # Option A: publish the whole repo root so index.html + compiled JS + data/ are together.
+      # If you prefer a trimmed output, create a 'site' folder and copy only what's needed.
+      - name: Prepare publish_dir
+        run: |
+          echo "Using repository root as publish_dir"
+          echo "." > .publish_dir
+
+      # Deploy into your user-site repository at MXHaxe/help/
+      # Docs: https://github.com/peaceiris/actions-gh-pages
+      - name: Deploy to user site subfolder
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          personal_token: ${{ secrets.PAGES_TOKEN }}
+          # If your user-site repo is named differently, change this:
+          external_repository: DoggyGamesShow123/DoggyGamesShow123.github.io
+          publish_branch: main
+          publish_dir: .
+          destination_dir: MXHaxe/help
+          keep_files: true
+          # Optional niceties:
+          commit_message: "Deploy from ${{ github.repository }}@${{ github.sha }}"
