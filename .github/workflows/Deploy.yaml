@@ -20,20 +20,20 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      # Java (required by some Haxe toolchains / actions)
+      # Java (some Haxe toolchains expect it)
       - name: Set up Java (Temurin 21)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
 
-      # Haxe 4.3.x (MBHaxe requires ≥4.3.0)
+      # Haxe 4.3.x (MBHaxe requires ≥ 4.3.0)
       - name: Set up Haxe
         uses: krdlab/setup-haxe@v2
         with:
           haxe-version: "4.3.7"
 
-      # Node is needed because the Haxe 'uglifyjs' lib shells out to the 'uglify-js' Node binary.
+      # Node is required because the Haxe 'uglifyjs' lib shells out to the 'uglify-js' npm binary
       - name: Set up Node (for uglifyjs minification)
         uses: actions/setup-node@v4
         with:
@@ -46,7 +46,7 @@ jobs:
           # Put node_modules/.bin on PATH so 'uglifyjs' is discoverable
           echo "$(npm bin)" >> "$GITHUB_PATH"
 
-      # ---- haxelib repo init (DO NOT write to ~/.haxelib as a directory) ----
+      # ---- Correct haxelib repo initialization (do NOT use ~/.haxelib as a directory) ----
       - name: Initialize haxelib repo (idempotent)
         shell: bash
         run: |
@@ -57,30 +57,32 @@ jobs:
             echo "haxelib already configured at: $(cat "$HOME/.haxelib" || true)"
           fi
 
-      # -------- IMPORTANT: Pin Heaps to 1.10.0 and verify ----------
+      # -------- Pin all Haxe libs and verify versions (defensive) ----------
       - name: Install & pin required haxelib dependencies
         shell: bash
         run: |
           set -euxo pipefail
 
-          # 1) Pin Heaps to pre-2.0 (1.10.0) so h3d.mat.DepthBuffer & h3d.pass.Base exist.
-          #    If a dev/git copy were active anywhere, neutralize it first.
-          #    (If a dev version were active, `haxelib set` would be ignored.)
+          # Neutralize any dev/git override for Heaps (dev overrides ignore 'set')
+          # (Haxelib docs: 'haxelib git' enables development dir; use 'haxelib dev <lib>' to disable) 
+          haxelib dev heaps || true
+
+          # Heaps pre-2.0 so DepthBuffer + pass.Base exist
           haxelib install heaps 1.10.0 --always || true
           haxelib set heaps 1.10.0
 
-          # 2) JS/browser deps required by MBHaxe README
+          # JS/browser deps used by MBHaxe
           haxelib install stb_ogg_sound --always
           haxelib install zip 1.1.0 --always || haxelib set zip 1.1.0
 
-          # 3) Multiplayer transport used by your .hxml
+          # Multiplayer transport used by your .hxml
           haxelib install colyseus-websocket --always
           haxelib install datachannel --always
 
-          # 4) Haxe wrapper that invokes the npm 'uglify-js' binary
+          # Haxe wrapper that invokes the npm 'uglify-js' binary
           haxelib install uglifyjs --always
 
-          # --- Diagnostics (helpful if the runner somehow pulls Heaps 2.x) ---
+          # --- Diagnostics to confirm correct versions ---
           echo "=== HAXELIB LIST ==="
           haxelib list || true
           echo "=== HEAPS PATH ==="
@@ -117,7 +119,7 @@ jobs:
       - name: Deploy → doggygamesshow123.github.io/MXHaxe/help
         uses: peaceiris/actions-gh-pages@v4
         with:
-          personal_token: ${{ secrets.GH_PAGES_TOKEN }}   # classic PAT with repo scope
+          personal_token: ${{ secrets.GH_PAGES_TOKEN }}   # classic PAT with 'repo' scope
           external_repository: DoggyGamesShow123/DoggyGamesShow123.github.io
           publish_branch: main                           # change if your Pages repo uses "master"
           publish_dir: site
