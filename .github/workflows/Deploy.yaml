@@ -1,74 +1,10 @@
-name: Build & Deploy MBHaxe (JS → GitHub Pages subfolder)
-
-on:
-  push:
-    branches: [ master, main, mbu-port, mbg ]
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      # You asked to ensure Java works too. This installs JDK 21.
-      - name: Set up Java (Temurin 21)
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      # Set up Haxe 4.3.x for MBHaxe.
-      - name: Set up Haxe
-        uses: krdlab/setup-haxe@v2
-        with:
-          haxe-version: '4.3.7'
-
-      - name: Initialize haxelib and install browser deps
-        run: |
-          haxelib setup ~/.haxelib
-          # Heaps (game engine)
-          haxelib install heaps --always
-          # OGG/Vorbis decoder used by MBHaxe in browser
-          haxelib install stb_ogg_sound --always
-          # zip 1.1.0 specifically (per README)
-          haxelib install zip 1.1.0 --always || haxelib set zip 1.1.0
-          # datachannel is primarily for HashLink/webRTC; safe to attempt
-          # (on JS it won't hurt if present)
-          haxelib install datachannel --always || true
-
-      - name: Build (JS release if available, else JS debug)
-        run: |
-          if [ -f compile-js-rel.hxml ]; then
-            haxe compile-js-rel.hxml
-          else
-            haxe compile-js.hxml
-          fi
-
-      # Prepare a clean folder to publish (keep index.html + built assets)
-      - name: Stage site
-        run: |
-          mkdir -p site
-          # copy everything that the runtime expects; index.html references the
-          # correct compiled JS path as defined by the hxml files
-          rsync -av \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude '.circleci' \
-            ./ site/
-
-      # Deploy to your user Pages repo and to subdir MXHaxe/help
-      - name: Deploy → doggygamesshow123.github.io/MXHaxe/help
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          personal_token: ${{ secrets.GH_PAGES_TOKEN }}
-          external_repository: DoggyGamesShow123/DoggyGamesShow123.github.io
-          publish_branch: main           # change to master if your pages repo uses master
-          publish_dir: site
-          destination_dir: MXHaxe/help
-          commit_message: "Deploy MBHaxe ${{ github.sha }} → /MXHaxe/help"
+- name: Initialize haxelib repo (idempotent)
+  shell: bash
+  run: |
+    # ~/.haxelib is a *config file*; do not use it as the repo path.
+    if [ ! -f "$HOME/.haxelib" ]; then
+      mkdir -p "$HOME/haxelib"
+      haxelib setup "$HOME/haxelib"
+    else
+      echo "haxelib already configured → $(cat "$HOME/.haxelib" || true)"
+    fi
