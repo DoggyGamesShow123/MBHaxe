@@ -1,75 +1,138 @@
-name: Build Ultra and Deploy to Pages
+# .github/workflows/build-and-deploy.yml
+name: Build and Deploy MBHaxe
 
 on:
+  # Trigger on pushes to main branches and on demand
   push:
-    branches: [ "mbu-port" ]          # only run when Ultra branch is updated
-  workflow_dispatch:                   # allow manual trigger
+    branches: [ "master", "mbu-port", "mbg", "mbg-android", "mbp-android-new", "mbu-android" ]
+  workflow_dispatch: # Allow manual trigger
 
+# Sets permissions for GITHUB_TOKEN to deploy to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
 
+# Allow only one concurrent deployment
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [windows, mac, web, android]
+        # Exclude combinations that are not applicable
+        # We'll handle specific branch logic in steps
     steps:
-      - name: Checkout repository (mbu-port)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: mbu-port                 # build Ultra specifically
-          path: ultra-source
+          submodules: recursive # Important for dependencies like heaps
 
       - name: Setup Haxe
         uses: krdlab/setup-haxe@v1
         with:
-          haxe-version: 4.3.4
+          haxe-version: 4.3.6 # Ensure >= 4.3.0
 
-      # ---------- 🔍 CRITICAL: Replace the line below with the correct Heaps URL ----------
-      - name: Install Haxelib libraries
-        working-directory: ./ultra-source
+      - name: Install Haxelib dependencies
         run: |
-          haxelib install hxcpp
-          haxelib install lime
-          haxelib install openfl
-          # 🔻 REPLACE THE NEXT LINE WITH THE CORRECT HEAPS COMMAND (see instructions below)
-          haxelib git heaps https://github.com/HeapsIO/heaps.git 2.0.0   # <-- CHANGE THIS
-          # 🔺
-          haxelib install colyseus-websocket
-          haxelib git datachannel https://github.com/RandomityGuy/hxdatachannel
-          haxelib install stb_ogg_sound
-          haxelib install zip 1.1.0
-          haxelib list
+          haxelib install hxcpp > /dev/null
+          # Install heaps from the specific GitHub repo as per README
+          haxelib git heaps https://github.com/HeapsIO/heaps.git > /dev/null
+          # Install hlsdl from haxelib (then patched manually if needed - for native builds)
+          haxelib install hlsdl > /dev/null
+          # Install datachannel from GitHub
+          haxelib git datachannel https://github.com/DoggyGamesShow123/hxdatachannel.git > /dev/null
+          # Install other libs conditionally or globally
+          haxelib install stb_ogg_sound > /dev/null || true # For JS
+          haxelib install zip > /dev/null || true # For JS
+          haxelib git zyheaps https://github.com/zyheaps/zyheaps.git > /dev/null || true # For Android
+          echo "Haxelib setup complete"
 
-      - name: Build Ultra (HTML5)
-        working-directory: ./ultra-source
-        run: haxe compile-js.hxml
-
-      - name: Prepare output folder
-        run: |
-          mkdir -p public/ultra
-          cp -r ultra-source/index.html ultra-source/data ultra-source/bin public/ultra/ 2>/dev/null || true
-          # if bin folder doesn't exist, copy any generated .js files
-          if [ ! -d "public/ultra/bin" ]; then
-            cp ultra-source/*.js public/ultra/ 2>/dev/null || true
-          fi
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      # Special setup for Android build environment
+      - name: Setup Android SDK & NDK
+        if: matrix.target == 'android'
+        uses: android-actions/setup-android@v3
         with:
-          path: './public'
+          api-level: 31 # Platform SDK version 31 as per README
+          ndk-version: 18.1.5063045 # Exact NDK version required
 
-  deploy:
+      - name: Build for Web (JS)
+        if: matrix.target == 'web'
+        run: |
+          haxe compile-js.hxml
+          # Prepare web artifacts for deployment
+          mkdir -p public
+          cp -r index.html public/
+          cp -r data public/ 2>/dev/null || :
+          # Find and copy the generated JS file (adjust name if needed)
+          find . -name "*.js" -exec cp {} public/ \;
+          echo "Web build complete"
+
+      - name: Build for Windows (Hashlink/C++)
+        if: matrix.target == 'windows'
+        run: |
+          # For C++ target as per README instruction link
+          haxe compile-c.hxml
+          mkdir -p artifacts/windows
+          # Assuming the build output goes to Export/cpp or similar
+          cp -r Export/cpp/* artifacts/windows/ 2>/dev/null || :
+          echo "Windows build complete (artifacts may need adjustment)"
+
+      - name: Build for Mac (Hashlink)
+        if: matrix.target == 'mac'
+        run: |
+          # For Mac, follow instructions in README-macOS.md and compile-macos.hxml
+          haxe compile-macos.hxml
+          mkdir -p artifacts/mac
+          # .app bundle location depends on build script
+          cp -r macos-dist/*.app artifacts/mac/ 2>/dev/null || :
+          echo "Mac build complete"
+
+      - name: Build for Android
+        if: matrix.target == 'android'
+        working-directory: Export/android
+        run: |
+          # Ensure we are on an android branch (checked out by actions/checkout)
+          chmod +x gradlew
+          ./gradlew assembleRelease
+          mkdir -p ../../artifacts/android
+          cp app/build/outputs/apk/release/app-release-unsigned.apk ../../artifacts/android/
+          echo "Android APK built (unsigned)"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mbhaxe-${{ matrix.target }}
+          path: artifacts/${{ matrix.target }}/
+
+  # Special job to deploy Web build to GitHub Pages
+  deploy-web:
+    needs: build
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/mbu-port' || github.ref == 'refs/heads/mbg'
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
     steps:
+      - name: Download web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mbhaxe-web
+          path: public
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'public'
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
