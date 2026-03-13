@@ -1,0 +1,7 @@
+- name: Install browser deps
+  run: |
+    haxelib install heaps --always
+    haxelib install stb_ogg_sound --always
+    haxelib install zip 1.1.0 --always || haxelib set zip 1.1.0
+    # datachannel is primarily for native/HL; safe to try for completeness
+    haxelib install datachannel --always || true
