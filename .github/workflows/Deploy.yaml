@@ -38,7 +38,6 @@ jobs:
         shell: bash
         run: |
           # ~/.haxelib is the CONFIG FILE; do not use it as the repo directory.
-          # We point haxelib to a real folder like ~/haxelib instead.
           if [ ! -f "$HOME/.haxelib" ]; then
             mkdir -p "$HOME/haxelib"
             haxelib setup "$HOME/haxelib"
@@ -46,7 +45,7 @@ jobs:
             echo "haxelib already configured at: $(cat "$HOME/.haxelib" || true)"
           fi
 
-      - name: Install browser deps (heaps, stb_ogg_sound, zip 1.1.0)
+      - name: Install browser deps (heaps, stb_ogg_sound, zip 1.1.0, colyseus-websocket)
         run: |
           # Game engine
           haxelib install heaps --always
@@ -54,8 +53,10 @@ jobs:
           haxelib install stb_ogg_sound --always
           # MBHaxe wants zip 1.1.0 for JS builds
           haxelib install zip 1.1.0 --always || haxelib set zip 1.1.0
-          # Optional: WebRTC bindings (used mainly for native/HL; harmless if present)
-          haxelib install datachannel --always || true
+          # NEW: WebSocket client needed by your hxml (fixes the current error)
+          haxelib install colyseus-websocket --always
+          # Optional (usually not required unless your hxml also uses it):
+          # haxelib install colyseus --always || true
 
       - name: Build (JS release if available, else JS debug)
         run: |
@@ -65,7 +66,7 @@ jobs:
             haxe compile-js.hxml
           fi
 
-      # Stage what the web runtime needs. Easiest reliable path: copy repo then drop dev-only files.
+      # Stage what the web runtime needs.
       - name: Stage site
         shell: bash
         run: |
